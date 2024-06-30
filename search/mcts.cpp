@@ -49,11 +49,12 @@ void Mcts::reset_root(int stage)
 int Mcts::get_action(Game *board, Evaluation::mix9::Mix9Evaluator &evaluator)
 {
     srand((unsigned)time(0));
-    clock_t                                        start = clock();
+    auto         startTime = std::chrono::high_resolution_clock::now();
     std::vector<std::pair<int, Evaluation::Color>> simulation_path;
     reset_root(board->stage);
     int num_count = 0;
-    while (clock() - start < search_time) {
+//    for (int i = 0; i < 150000; ++i) {
+    while (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - startTime).count() < search_time) {
         num_count++;
         Node *node = root;
         while (!node->is_leaf()) {
@@ -89,15 +90,16 @@ int Mcts::get_action(Game *board, Evaluation::mix9::Mix9Evaluator &evaluator)
                 maxHeap.emplace(priority, availableAction);
             }
 
-            // 取出堆中的前10个优先级最高的元素并展开节点
-            // float pune_prior = 0.9f;
+            // 取出堆中的前30个优先级最高的元素并展开节点
+            // float pune_prior = 0.99f;
             int   pune_count = 30;
-            while (!maxHeap.empty() && pune_count >= 0) {
+            while (!maxHeap.empty() && pune_count > 0) {
                 auto [prior, action] = maxHeap.top();
                 maxHeap.pop();
-                node->expand_node(action, prior);
+                node->expand_node(action, prior, pune_count-1);
                 pune_count --;
             }
+
         }
         else {
             if (isOverAndWinner == board->currentPlayer) {
@@ -123,9 +125,12 @@ int Mcts::get_action(Game *board, Evaluation::mix9::Mix9Evaluator &evaluator)
     std::vector<int> visits;
     std::vector<int> actions;
 
+
     for (auto [act, child] : root->children) {
-        visits.push_back(child->visits);
-        actions.push_back(act);
+        if (child.second){
+            visits.push_back(child.second->visits);
+            actions.push_back(act);
+        }
     }
 
     int s_v[361] = {0};
@@ -150,26 +155,27 @@ int Mcts::get_action(Game *board, Evaluation::mix9::Mix9Evaluator &evaluator)
             action    = actions[i];
         }
     }
-    clock_t end_time = clock();
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto using_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - startTime).count();
     for (auto act : actions)
         std::cout << act << " ";
     std::cout << std::endl;
-    std::cout << "[INFO TIME ]: " << end_time - start << std::endl;
+    std::cout << "[INFO TIME ]: " << using_ms << std::endl;
     std::cout << "[INFO R.COUNT]: " << root->visits << std::endl;
-    std::cout << "[INFO C.COUNT]: " << root->children[action]->visits << std::endl;
-    std::cout << "[INFO NPS]: " << root->visits * 1000 / (end_time - start) << std::endl;
+//    std::cout << "[INFO C.COUNT]: " << root->children[action]->visits << std::endl;
+    std::cout << "[INFO NPS]: " << root->visits * 1000 / using_ms << std::endl;
     std::cout << "[INFO ACTIONS]: " << board->available_moves.size() << std::endl;
     std::cout << "[INFO PIECES]: " << board->numPieces << std::endl;
 
     std::cout << "[INFO R.WinRate]: " << (root->win_rate + 1.0f) * 50 << std::endl;
-    std::cout << "[INFO C.WinRate]: " << (root->children[action]->win_rate + 1.0f) * 50
-              << std::endl;
+//    std::cout << "[INFO C.WinRate]: " << (root->children[action]->win_rate + 1.0f) * 50
+//              << std::endl;
     std::cout << "[INFO Count]: " << num_count << std::endl;
 
     m_search_info.search_counts  = root->visits;
-    m_search_info.search_time_ms = end_time - start;
+    m_search_info.search_time_ms = using_ms;
     m_search_info.num_pieces     = board->numPieces - 1;
-    m_search_info.nps            = root->visits * 1000 / (end_time - start);
+    m_search_info.nps            = root->visits * 1000 / using_ms;
     m_search_info.win_rate       = (root->win_rate + 1.0f) * 50;
     ;
 

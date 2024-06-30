@@ -16,14 +16,16 @@ public:
     float                  c_puct;
     Node                  *parent;
     int                    stage;
-    std::map<int, Node *>  children;
+    int                    num_children;
+    std::array<std::pair<int, std::pair<float, Node*>>, 30> children;
                            Node(float prior_prob, int stage, float c_puct, Node *parent);
     ~                      Node();
     std::pair<int, Node *> select_move();
-    void                   expand_node(int action, float prob);
+    void                   expand_node(int action, float prob, int index);
     void                   update_win_rate(float value);
     void                   backup(float value);
     float                  get_ucb_value();
+    float                  get_ucb_value(float parent_rate, float prob);
     bool                   is_leaf();
 };
 

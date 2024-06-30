@@ -3,6 +3,7 @@
 //
 
 #include "node.h"
+#include <iostream>
 
 #include <cmath>
 
@@ -13,42 +14,58 @@ Node::Node(float prior_prob, int stage, float c_puct, Node *parent)
     , win_rate(0.0f)
     , up_bound(0.0f)
     , parent(parent)
-    , visits(0) {};
+    , visits(0)
+    , num_children(0){};
 
 Node::~Node()
 {
     for (auto [_, child] : children) {
-        delete child;
+        if (child.second) delete child.second;
     }
 }
 
 std::pair<int, Node *> Node::select_move()
 {
-    float next_win_rate = (stage == 1) ? 0.1f-win_rate : win_rate-0.1f;
-
-    for (auto [move, child] : children) {
-        if (child->visits == 0) child->win_rate = next_win_rate;
-    }
-
+//    float next_win_rate = (stage == 1) ? 0.1f-win_rate : win_rate-0.1f;
+//
+//    for (auto [move, child] : children) {
+//        if (child->visits == 0) child->win_rate = next_win_rate;
+//    }
     int   best_move;
     float best_value = -10000.0f;
+    float value;
+    float best_prob;
     Node *best_child = nullptr;
 
     for (auto [move, child] : children) {
-        float value = child->get_ucb_value();
-        if (value > best_value) {
-            best_move  = move;
-            best_value = value;
-            best_child = child;
+        if (child.second){
+            value = child.second->get_ucb_value();
+            if (value > best_value) {
+                best_move  = move;
+                best_value = value;
+                best_child = child.second;
+            }
+        }
+        else{
+            value = get_ucb_value(win_rate, child.first);
+            if (value > best_value){
+                best_move = move;
+                best_value = value;
+                best_child = nullptr;
+                best_prob = child.first;
+            }
         }
     }
+    if (!best_child) best_child = new Node(best_prob, (stage+1)%2, c_puct, this);
+    num_children++;
     return {best_move, best_child};
 }
 
-void Node::expand_node(int action, float prob)
+void Node::expand_node(int action, float prob, int index)
 {
-    auto child = new Node(prob, (stage + 1) % 2, c_puct, this);
-    children.insert({action, child});
+    // 虚假的扩展
+//    auto child = new Node(prob, (stage + 1) % 2, c_puct, this);
+    children[index] = {action, {prob, nullptr}};
 }
 
 void Node::update_win_rate(float value)
@@ -76,7 +93,14 @@ float Node::get_ucb_value()
     return win_rate + up_bound;
 }
 
+float Node::get_ucb_value(float parent_rate, float prob)
+{
+    float u = c_puct * prob * sqrt(visits);
+    float q = (stage == 1) ? 0.1f-parent_rate : parent_rate-0.1f;
+    return u + q;
+}
+
 bool Node::is_leaf()
 {
-    return children.empty();
+    return num_children == 0;
 }
