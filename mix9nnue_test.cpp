@@ -107,7 +107,7 @@ void test_mix9net()
 
 void test_speed_mix9net()
 {
-    std::string model_path = "C:/Users/Admin/Desktop/C6NNUE/weights/model.bin";
+    std::string model_path = "/Users/kim/Desktop/C6NNUE/weights/model.bin";
     std::unique_ptr<Evaluation::mix9::Mix9Evaluator> evaluator =
         std::make_unique<Evaluation::mix9::Mix9Evaluator>(19, model_path, model_path);
 
@@ -167,7 +167,7 @@ void do_one_step(Mcts *mcts, Game *game, Evaluation::mix9::Mix9Evaluator &evalua
 void test_mcts()
 {
     auto        game       = new Game();
-    std::string model_path = "C:/Users/Admin/Desktop/C6NNUE/weights/model.bin";
+    std::string model_path = "/Users/kim/Desktop/C6NNUE/weights/model.bin";
     std::unique_ptr<Evaluation::mix9::Mix9Evaluator> evaluator =
         std::make_unique<Evaluation::mix9::Mix9Evaluator>(19, model_path, model_path);
     evaluator->initEmptyBoard();

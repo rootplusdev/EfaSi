@@ -27,6 +27,11 @@
     #include <arm_neon.h>  // NEON
 #endif
 
+#if defined(_MSC_VER)
+    #include <cstdlib>   // for _rotr64
+    #include <intrin.h>  // for __umulh, _mm_prefetch, __prefetch
+#endif
+
 // Define some macros for platform specific optimization hint
 #if defined(__clang__) || defined(__GNUC__) || defined(__GNUG__)
     #define FORCE_INLINE inline __attribute__((always_inline))
@@ -256,6 +261,14 @@ enum InstructionType {
     NEON,
 };
 
+#if defined(USE_SSE) || defined(USE_AVX2) || defined(USE_AVX512)
+constexpr InstructionType I128 = SSE;
+#elif defined(USE_NEON) || defined(USE_NEON_DOTPROD)
+constexpr InstructionType I128 = NEON;
+#else
+    #error "No SIMD instruction set is enabled"
+#endif
+
 /// Get simd register width of the given instruction type.
 constexpr size_t simdBitsOfInstType(InstructionType instType)
 {
@@ -394,6 +407,7 @@ namespace detail {
     struct VecLoadStore
     {};
 
+#ifdef USE_SSE
     template <typename T, int Alignment>
     struct VecLoadStore<T, Alignment, SSE, std::enable_if_t<std::is_integral_v<T>>>
     {
@@ -413,7 +427,9 @@ namespace detail {
                 _mm_storeu_si128(addr, data);
         }
     };
+#endif
 
+#ifdef USE_AVX2
     template <typename T, int Alignment>
     struct VecLoadStore<T, Alignment, AVX2, std::enable_if_t<std::is_integral_v<T>>>
     {
@@ -433,6 +449,7 @@ namespace detail {
                 _mm256_storeu_si256(addr, data);
         }
     };
+#endif
 
 #ifdef USE_AVX512
     template <typename T, int Alignment>
@@ -498,6 +515,7 @@ namespace detail {
     };
 #endif
 
+#ifdef USE_SSE
     template <int Alignment>
     struct VecLoadStore<float, Alignment, SSE>
     {
@@ -517,7 +535,9 @@ namespace detail {
                 _mm_storeu_ps(addr, data);
         }
     };
+#endif
 
+#ifdef USE_AVX2
     template <int Alignment>
     struct VecLoadStore<float, Alignment, AVX2>
     {
@@ -537,6 +557,7 @@ namespace detail {
                 _mm256_storeu_ps(addr, data);
         }
     };
+#endif
 
 #ifdef USE_AVX512
     template <int Alignment>
@@ -577,7 +598,7 @@ namespace detail {
 #endif
 
     template <typename T, int Alignment>
-    struct VecLoadStore<T, Alignment, SCALAR> : VecLoadStore<T, Alignment, SSE>
+    struct VecLoadStore<T, Alignment, SCALAR>
     {};
 
     // ------------------------------------------------------------------------
@@ -588,6 +609,7 @@ namespace detail {
     struct VecCvt
     {};
 
+#ifdef USE_SSE
     template <typename FT, typename TT>
     struct VecCvt<FT, TT, SSE, std::enable_if_t<std::is_integral_v<TT>>>
     {
@@ -646,7 +668,9 @@ namespace detail {
                 static_assert(always_false_v<FT, TT>, "unsupported convert type");
         }
     };
+#endif
 
+#ifdef USE_AVX2
     template <typename FT, typename TT>
     struct VecCvt<FT, TT, AVX2, std::enable_if_t<std::is_integral_v<TT>>>
     {
@@ -712,6 +736,7 @@ namespace detail {
                 static_assert(always_false_v<FT, TT>, "unsupported convert type");
         }
     };
+#endif
 
 #ifdef USE_AVX512
     template <typename FT, typename TT>
@@ -830,6 +855,7 @@ namespace detail {
     };
 #endif
 
+#ifdef USE_SSE
     template <>
     struct VecCvt<int32_t, float, SSE>
     {
@@ -838,7 +864,9 @@ namespace detail {
 
         static FORCE_INLINE TR convert1(FR a) { return _mm_cvtepi32_ps(a); }
     };
+#endif
 
+#ifdef USE_AVX2
     template <>
     struct VecCvt<int32_t, float, AVX2>
     {
@@ -847,6 +875,7 @@ namespace detail {
 
         static FORCE_INLINE TR convert1(FR a) { return _mm256_cvtepi32_ps(a); }
     };
+#endif
 
 #ifdef USE_AVX512
     template <>
@@ -871,7 +900,7 @@ namespace detail {
 #endif
 
     template <typename FT, typename TT>
-    struct VecCvt<FT, TT, SCALAR> : VecCvt<FT, TT, SSE>
+    struct VecCvt<FT, TT, SCALAR>
     {};
 
     // ------------------------------------------------------------------------
@@ -882,6 +911,7 @@ namespace detail {
     struct VecPack
     {};
 
+#ifdef USE_SSE
     template <typename FT, typename TT>
     struct VecPack<FT, TT, SSE, std::enable_if_t<std::is_integral_v<TT>>>
     {
@@ -903,7 +933,9 @@ namespace detail {
 
         static FORCE_INLINE R packs_permuted(R a, R b) { return packs(a, b); }
     };
+#endif
 
+#ifdef USE_AVX2
     template <typename FT, typename TT>
     struct VecPack<FT, TT, AVX2, std::enable_if_t<std::is_integral_v<TT>>>
     {
@@ -930,6 +962,7 @@ namespace detail {
             return r;
         }
     };
+#endif
 
 #ifdef USE_AVX512
     template <typename FT, typename TT>
@@ -986,7 +1019,7 @@ namespace detail {
 #endif
 
     template <typename FT, typename TT>
-    struct VecPack<FT, TT, SCALAR, std::enable_if_t<std::is_integral_v<TT>>> : VecPack<FT, TT, SSE>
+    struct VecPack<FT, TT, SCALAR, std::enable_if_t<std::is_integral_v<TT>>>
     {};
 
     // ------------------------------------------------------------------------
@@ -996,6 +1029,7 @@ namespace detail {
     struct VecOp
     {};
 
+#ifdef USE_SSE
     struct VecOpSISSE
     {
         typedef __m128i       R;
@@ -1004,7 +1038,9 @@ namespace detail {
         static FORCE_INLINE R bitwiseand(R a, R b) { return _mm_and_si128(a, b); }
         static FORCE_INLINE R bitwisexor(R a, R b) { return _mm_xor_si128(a, b); }
     };
+#endif
 
+#ifdef USE_AVX2
     struct VecOpSIAVX2
     {
         typedef __m256i       R;
@@ -1013,6 +1049,7 @@ namespace detail {
         static FORCE_INLINE R bitwiseand(R a, R b) { return _mm256_and_si256(a, b); }
         static FORCE_INLINE R bitwisexor(R a, R b) { return _mm256_xor_si256(a, b); }
     };
+#endif
 
 #ifdef USE_AVX512
     struct VecOpSIAVX512
@@ -1025,6 +1062,7 @@ namespace detail {
     };
 #endif
 
+#ifdef USE_SSE
     template <>
     struct VecOp<int8_t, SSE> : VecOpSISSE
     {
@@ -1042,13 +1080,13 @@ namespace detail {
         /// Compute 4-element dot product of [u7x16] and [i8x16] then accumulate into [i32x4].
         static FORCE_INLINE void dot4_u7i8_accum(R &acc, R a, R b)
         {
-#if defined(USE_VNNI)
+    #if defined(USE_VNNI)
             acc = _mm_dpbusd_avx_epi32(acc, a, b);
-#else
+    #else
             R product0 = _mm_maddubs_epi16(a, b);
             product0   = _mm_madd_epi16(product0, _mm_set1_epi16(1));
             acc        = _mm_add_epi32(acc, product0);
-#endif
+    #endif
         }
 
         /// Compute 4-element dot product of [i8x16] and [i8x16] then accumulate into [i32x4].
@@ -1059,10 +1097,10 @@ namespace detail {
             R msb  = _mm_and_si128(a, highest_bit);
             R low7 = _mm_andnot_si128(highest_bit, a);
 
-#if defined(USE_VNNI)
+    #if defined(USE_VNNI)
             msb  = _mm_dpbusd_avx_epi32(_mm_setzero_si128(), msb, b);  // 0 or 128
             low7 = _mm_dpbusd_avx_epi32(_mm_setzero_si128(), low7, b);
-#else
+    #else
             // Multiply a * b in two parts and accumulate neighbouring outputs into int16 values
             msb  = _mm_maddubs_epi16(msb, b);  // 0 or 128
             low7 = _mm_maddubs_epi16(low7, b);
@@ -1071,14 +1109,16 @@ namespace detail {
             const R one = _mm_set1_epi16(1);
             low7        = _mm_madd_epi16(low7, one);
             msb         = _mm_madd_epi16(msb, one);
-#endif
+    #endif
 
             // Place value of the MSB was negative
             R product0 = _mm_sub_epi32(low7, msb);
             acc        = _mm_add_epi32(acc, product0);
         }
     };
+#endif
 
+#ifdef USE_AVX2
     template <>
     struct VecOp<int8_t, AVX2> : VecOpSIAVX2
     {
@@ -1096,13 +1136,13 @@ namespace detail {
         /// Compute 4-element dot product of [u7x32] and [i8x32] then accumulate into [i32x8].
         static FORCE_INLINE void dot4_u7i8_accum(R &acc, R a, R b)
         {
-#if defined(USE_VNNI)
+    #if defined(USE_VNNI)
             acc = _mm256_dpbusd_avx_epi32(acc, a, b);
-#else
+    #else
             R product0 = _mm256_maddubs_epi16(a, b);
             product0   = _mm256_madd_epi16(product0, _mm256_set1_epi16(1));
             acc        = _mm256_add_epi32(acc, product0);
-#endif
+    #endif
         }
 
         /// Compute 4-element dot product of [i8x32] and [i8x32] then accumulate into [i32x8].
@@ -1113,10 +1153,10 @@ namespace detail {
             R msb  = _mm256_and_si256(a, highest_bit);
             R low7 = _mm256_andnot_si256(highest_bit, a);
 
-#if defined(USE_VNNI)
+    #if defined(USE_VNNI)
             msb  = _mm256_dpbusd_avx_epi32(_mm256_setzero_si256(), msb, b);  // 0 or 128
             low7 = _mm256_dpbusd_avx_epi32(_mm256_setzero_si256(), low7, b);
-#else
+    #else
             // Multiply a * b in two parts and accumulate neighbouring outputs into int16 values
             msb  = _mm256_maddubs_epi16(msb, b);  // 0 or 128
             low7 = _mm256_maddubs_epi16(low7, b);
@@ -1125,13 +1165,14 @@ namespace detail {
             const R one = _mm256_set1_epi16(1);
             low7        = _mm256_madd_epi16(low7, one);
             msb         = _mm256_madd_epi16(msb, one);
-#endif
+    #endif
 
             // Place value of the MSB was negative
             R product0 = _mm256_sub_epi32(low7, msb);
             acc        = _mm256_add_epi32(acc, product0);
         }
     };
+#endif
 
 #ifdef USE_AVX512
     template <>
@@ -1249,6 +1290,7 @@ namespace detail {
     };
 #endif
 
+#ifdef USE_SSE
     template <>
     struct VecOp<int16_t, SSE> : VecOpSISSE
     {
@@ -1281,7 +1323,9 @@ namespace detail {
         }
         static FORCE_INLINE R dot2(R a, R b) { return _mm_madd_epi16(a, b); }
     };
+#endif
 
+#ifdef USE_AVX2
     template <>
     struct VecOp<int16_t, AVX2> : VecOpSIAVX2
     {
@@ -1326,6 +1370,7 @@ namespace detail {
             return _mm_cvtsi128_si32(sum32);  // movd
         }
     };
+#endif
 
 #ifdef USE_AVX512
     template <>
@@ -1431,6 +1476,7 @@ namespace detail {
     };
 #endif
 
+#ifdef USE_SSE
     template <>
     struct VecOp<int32_t, SSE> : VecOpSISSE
     {
@@ -1473,7 +1519,9 @@ namespace detail {
             return sum0;
         }
     };
+#endif
 
+#ifdef USE_AVX2
     template <>
     struct VecOp<int32_t, AVX2> : VecOpSIAVX2
     {
@@ -1525,6 +1573,7 @@ namespace detail {
             return sum128;
         }
     };
+#endif
 
 #ifdef USE_AVX512
     template <>
@@ -1617,6 +1666,7 @@ namespace detail {
     };
 #endif
 
+#ifdef USE_SSE
     template <>
     struct VecOp<float, SSE>
     {
@@ -1632,11 +1682,11 @@ namespace detail {
         static FORCE_INLINE R max(R a, R b) { return _mm_max_ps(a, b); }
         static FORCE_INLINE R fmadd(R a, R b, R c)
         {
-#ifdef USE_AVX2
+    #ifdef USE_AVX2
             return _mm_fmadd_ps(a, b, c);
-#else
+    #else
             return _mm_add_ps(_mm_mul_ps(a, b), c);
-#endif
+    #endif
         }
         static FORCE_INLINE T reduceadd(R a)
         {
@@ -1647,7 +1697,9 @@ namespace detail {
             return _mm_cvtss_f32(sums);
         }
     };
+#endif
 
+#ifdef USE_AVX2
     template <>
     struct VecOp<float, AVX2>
     {
@@ -1670,6 +1722,7 @@ namespace detail {
             return VecOp<float, SSE>::reduceadd(lo);
         }
     };
+#endif
 
 #ifdef USE_AVX512
     template <>
@@ -1710,7 +1763,7 @@ namespace detail {
 #endif
 
     template <typename T>
-    struct VecOp<T, SCALAR> : VecOp<T, SSE>
+    struct VecOp<T, SCALAR>
     {};
 
     // ------------------------------------------------------------------------
@@ -1799,8 +1852,6 @@ namespace detail {
         static void
         forward(int32_t *output, const int8_t *input, const int8_t *weight, const int32_t *bias)
         {
-            constexpr InstructionType I128 = SSE;
-
             typedef detail::VecLoadStore<int8_t, Alignment, I>     I8LS;
             typedef detail::VecLoadStore<int32_t, Alignment, I128> I32LS128;
             typedef detail::VecOp<int8_t, I>                       I8Op;
@@ -1927,8 +1978,6 @@ namespace detail {
         static void
         forward(int32_t *output, const int16_t *input, const int16_t *weight, const int32_t *bias)
         {
-            constexpr InstructionType I128 = SSE;
-
             typedef detail::VecLoadStore<int16_t, Alignment, I>    I16LS;
             typedef detail::VecLoadStore<int32_t, Alignment, I128> I32LS128;
             typedef detail::VecOp<int16_t, I>                      I16Op;
@@ -2217,13 +2266,15 @@ int8_t *crelu(int8_t output[Size], const int32_t input[Size])
         if constexpr (!NoReLU)
             result = I8Op::max(result, zero);
 
-        // Permute values in different lanes if required.
+// Permute values in different lanes if required.
+#ifdef USE_AVX2
         if constexpr (Inst == AVX2) {
             const auto control = _mm256_set_epi32(7, 3, 6, 2, 5, 1, 4, 0);
             result             = _mm256_permutevar8x32_epi32(result, control);
         }
+#endif
 #ifdef USE_AVX512
-        else if constexpr (Inst == AVX512) {
+        if constexpr (Inst == AVX512) {
             const auto control =
                 _mm512_set_epi32(15, 11, 7, 3, 14, 10, 6, 2, 13, 9, 5, 1, 12, 8, 4, 0);
             result = _mm512_permutexvar_epi32(control, result);
@@ -2272,13 +2323,15 @@ int16_t *crelu(int16_t output[Size], const int32_t input[Size])
         if constexpr (!NoReLU)
             result = I16Op::max(result, zero);
 
-        // Permute values in different lanes if required.
+            // Permute values in different lanes if required.
+#ifdef USE_AVX2
         if constexpr (Inst == AVX2) {
             const auto control = _MM_SHUFFLE(3, 1, 2, 0);
             result             = _mm256_permute4x64_epi64(result, control);
         }
+#endif
 #ifdef USE_AVX512
-        else if constexpr (Inst == AVX512) {
+        if constexpr (Inst == AVX512) {
             const auto control = _mm512_set_epi64(7, 5, 3, 1, 6, 4, 2, 0);
             result             = _mm512_permutexvar_epi64(control, result);
         }
