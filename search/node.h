@@ -5,6 +5,7 @@
 #ifndef NODE_H
 #define NODE_H
 #include <map>
+static const int MAX_CHILDREN_NUM = 64;
 
 class Node
 {
@@ -17,7 +18,8 @@ public:
     Node                  *parent;
     int                    stage;
     int                    num_children;
-    std::array<std::pair<int, std::pair<float, Node*>>, 30> children;
+    bool                   is_extend;
+    std::array<std::pair<int, std::pair<float, Node*>>, MAX_CHILDREN_NUM> children;
                            Node(float prior_prob, int stage, float c_puct, Node *parent);
     ~                      Node();
     std::pair<int, Node *> select_move();

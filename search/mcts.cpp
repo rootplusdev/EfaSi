@@ -92,7 +92,7 @@ int Mcts::get_action(Game *board, Evaluation::mix9::Mix9Evaluator &evaluator)
 
             // 取出堆中的前30个优先级最高的元素并展开节点
             // float pune_prior = 0.99f;
-            int   pune_count = 30;
+            int   pune_count = MAX_CHILDREN_NUM;
             while (!maxHeap.empty() && pune_count > 0) {
                 auto [prior, action] = maxHeap.top();
                 maxHeap.pop();
