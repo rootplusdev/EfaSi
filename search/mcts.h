@@ -1,41 +1,74 @@
-//
-// Created by Admin on 2024/6/28.
-//
+#pragma once
 
-#ifndef MCTS_H
-#define MCTS_H
-#include "../eval/mix9nnue.h"
-#include "../game/game.h"
+#include "pos.h"
+#include "types.h"
+#include "../searchoutput.h"
+#include "../searchthread.h"
+#include "../timecontrol.h"
 #include "node.h"
+#include "nodetable.h"
 
-// 搜索信息
-struct SearchInfo
-{
-    int   search_time_ms = 0;  // 搜索时间
-    int   search_counts  = 0;  // 搜索次数
-    int   num_pieces     = 0;
-    float win_rate       = 0;
-    int   nps            = 0;
-};
+#include <atomic>
+#include <unordered_set>
 
-class Mcts
+namespace Search::MCTS {
+
+class MCTSSearcher : public Searcher
 {
 public:
-    int        node_count;
-    float      win_rate;
-               Mcts(float c_puct, unsigned ms);
-    ~          Mcts();
-    int        get_count() { return node_count; }
-    float      get_win_rate() { return win_rate; }
-    SearchInfo get_search_info() { return m_search_info; }
-    int        get_action(Game *board, Evaluation::mix9::Mix9Evaluator &evaluator);
-    void       reset_root(int stage);
+   /// Time controller
+   TimeControl timectl;
+   /// Printer for all search messages
+   SearchPrinter printer;
+   /// The node table for storing and finding all transposition nodes
+   std::unique_ptr<NodeTable> nodeTable;
+   /// The root node of the MCTS tree
+   Node *root;
+   /// The searched position of last root node
+   std::vector<Pos> previousPosition;
+   /// The global node age to synchronize the node table
+   uint32_t globalNodeAge;
+   /// The number of selectable root moves, set by updateRootMovesData().
+   uint32_t numSelectableRootMoves;
+   // The last number of nodes that we have printed search outputs
+   uint64_t lastOutputNodes;
+   // The last time that we have printed search outputs
+   Time lastOutputTime;
+
+   MCTSSearcher();
+   ~MCTSSearcher() = default;
+
+   std::unique_ptr<SearchData> makeSearchData(SearchThread &th) override { return nullptr; }
+
+   /// Set the memory size limit of the search.
+   void setMemoryLimit(size_t memorySizeKB) override;
+
+   /// Get the current memory size limit of the search.
+   size_t getMemoryLimit() const override;
+
+   /// Clear the state of the searcher between two different games
+   void clear(ThreadPool &pool, bool clearAllMemory) override;
+
+   /// The thinking entry point. When program receives search command, main
+   /// thread is started first and other threads are launched by main thread.
+   void searchMain(MainSearchThread &th) override;
+
+   /// The main best first search loop. It calls search() repeatedly until the stop
+   /// condition is reached. Results are updated to thread bounded with the board.
+   void search(SearchThread &th) override;
+
+   /// Checks if current search reaches timeup condition.
+   bool checkTimeupCondition() override;
 
 private:
-    float      c_pupt;
-    unsigned   search_time;
-    Node      *root;
-    SearchInfo m_search_info;
+   /// Setup root node for the search
+   void setupRootNode(MainSearchThread &th);
+
+   /// Garbage collect all old nodes in the node table
+   void recycleOldNodes(MainSearchThread &th);
+
+   /// Rank the root moves and update PV, then print all root moves
+   void updateRootMovesData(MainSearchThread &th);
 };
 
-#endif //MCTS_H
+}  // namespace Search::MCTS

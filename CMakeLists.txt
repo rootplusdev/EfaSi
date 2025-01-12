@@ -37,6 +37,12 @@ set(SOURCES
         search/node.cpp
         search/mcts.h
         search/mcts.cpp
+        search/pos.h
+        search/types.h
+        search/nodetable.h
+        search/parameter.h
+        search/utils.cpp
+        search/utils.h
 )
 
 # 创建可执行文件
